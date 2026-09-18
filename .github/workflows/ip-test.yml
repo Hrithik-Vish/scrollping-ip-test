@@ -1,0 +1,45 @@
+name: ScrollPing IP Viability Test
+
+# Research-only workflow. Not the real scraper. Runs the throwaway
+# ip_test.py harness once an hour and commits the accumulated results.csv
+# back to the repo so results build up over the 1-3 day test window.
+#
+# You can also trigger it manually from the Actions tab (workflow_dispatch)
+# to sanity-check it works before waiting for the first scheduled run.
+
+on:
+  schedule:
+    # Runs at the top of every hour, UTC. GitHub's schedule times are not
+    # exact under load — expect some runs a few minutes late, that's normal.
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+# Needed so the workflow can push the updated results.csv back to the repo.
+permissions:
+  contents: write
+
+jobs:
+  test-fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: Run IP viability test
+        run: python ip_test.py
+
+      - name: Commit updated results.csv
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results.csv
+          git diff --staged --quiet || git commit -m "Add IP test results for $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git push
