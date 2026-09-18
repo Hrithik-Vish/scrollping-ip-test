@@ -41,3 +41,9 @@ timestamp_utc,site_name,url,status_code,error_detail,response_length,looks_block
 2026-09-18T19:44:11.499831+00:00,mgeko,https://www.mgeko.cc/jumbo/manga/,200,,93934,True,74
 2026-09-18T19:44:11.499831+00:00,mangadex,https://api.mangadex.org/chapter?includes[]=manga&order[publishAt]=desc&limit=32&offset=0,200,,907424,False,32
 2026-09-18T19:44:11.499831+00:00,vortexscans,https://vortexscans.org/,200,,558443,False,131
+2026-09-18T22:40:11.140259+00:00,asurascans,https://asurascans.com/,200,,705243,False,58
+2026-09-18T22:40:11.140259+00:00,hivetoons,https://hivetoons.org/,200,,929251,True,195
+2026-09-18T22:40:11.140259+00:00,kunmanga,https://www.kunmanga.online/,200,,328039,False,137
+2026-09-18T22:40:11.140259+00:00,mgeko,https://www.mgeko.cc/jumbo/manga/,200,,94755,True,74
+2026-09-18T22:40:11.140259+00:00,mangadex,https://api.mangadex.org/chapter?includes[]=manga&order[publishAt]=desc&limit=32&offset=0,200,,907424,False,32
+2026-09-18T22:40:11.140259+00:00,vortexscans,https://vortexscans.org/,200,,556882,False,129
