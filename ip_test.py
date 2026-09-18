@@ -58,25 +58,31 @@ CSV_HEADERS = [
 # Sites to test, in priority order. site_name is just a label for the CSV.
 #
 # "mode" controls how the response is checked:
-#   "html" - the normal case: run the chapter-link regex over the HTML body.
-#   "json" - for sites hit via a real API instead of scraped HTML (mangadex).
-#            found_links here counts JSON chapter objects instead of <a> tags,
-#            and looks_blocked's HTML text markers don't apply.
+#   "html"          - the normal case: run the chapter-link regex over
+#                      <a> href values.
+#   "json"          - for sites hit via a real API instead of scraped HTML
+#                      (mangadex).
+#   "html_li_block" - for sites where the chapter number is NOT in the
+#                      <a href="..."> at all, but in a sibling element
+#                      inside the same list-item block (mgeko: the link is
+#                      just /manga/<slug>/, and "Chapter 27-1-eng-li" lives
+#                      in a separate <h5 class="chapter-title"> next to it).
+#                      Counts <li class="novel-item"> blocks that contain
+#                      a <h5 class="chapter-title"> instead of running the
+#                      href regex, since the regex can never match here.
 #
-# mgeko: switched from the homepage (which renders nothing useful for the
-# chapter-link regex) to /jumbo/manga/, which is where latest updates
-# actually live, per the Mihon/Keiyoushi source reference.
+# mgeko: switched from the homepage to /jumbo/manga/ (correct listing
+# page), and mode to html_li_block after inspecting the real page — its
+# chapter-title text is a sibling of the manga link, not part of the href.
 #
-# mangadex: switched from the JS-rendered homepage shell (always near-empty
-# for a plain requests.get) to the official public API endpoint, which
-# returns structured JSON directly — no HTML parsing needed at all. This
-# matches how the real scraper already dispatches mangadex per
-# architecture-decisions.md.
+# mangadex: switched from the JS-rendered homepage shell to the official
+# public API endpoint, returning structured JSON directly. Matches how the
+# real scraper already dispatches mangadex per architecture-decisions.md.
 SITES = [
     {"site_name": "asurascans", "url": "https://asurascans.com/", "priority": "core", "mode": "html"},
     {"site_name": "hivetoons", "url": "https://hivetoons.org/", "priority": "core", "mode": "html"},
     {"site_name": "kunmanga", "url": "https://www.kunmanga.online/", "priority": "core", "mode": "html"},
-    {"site_name": "mgeko", "url": "https://www.mgeko.cc/jumbo/manga/", "priority": "secondary", "mode": "html"},
+    {"site_name": "mgeko", "url": "https://www.mgeko.cc/jumbo/manga/", "priority": "secondary", "mode": "html_li_block"},
     {
         "site_name": "mangadex",
         "url": "https://api.mangadex.org/chapter?includes[]=manga&order[publishAt]=desc&limit=32&offset=0",
@@ -159,6 +165,9 @@ def looks_blocked(text, response_length, mode):
             return "data" not in parsed
         except (ValueError, TypeError):
             return True  # got something back but it wasn't JSON at all
+    # "html" and "html_li_block" both go through the same HTML heuristics —
+    # they only differ in how found_links is counted, not in what a
+    # block/challenge page looks like.
     lowered = text.lower()
     if any(marker in lowered for marker in LOOKS_BLOCKED_MARKERS):
         return True
@@ -182,6 +191,11 @@ def count_chapter_links(text, mode):
         soup = BeautifulSoup(text, "lxml")
     except Exception:
         return 0
+    if mode == "html_li_block":
+        # mgeko-style pages: chapter info lives in a sibling element, not
+        # the <a href>. Count list items that actually contain a
+        # chapter-title element, rather than regexing the href.
+        return len(soup.find_all("li", class_="novel-item"))
     return len(soup.find_all("a", href=CHAPTER_LINK_PATTERN))
 
 
@@ -230,22 +244,6 @@ def run():
         writer.writerows(rows)
 
     print(f"\nAppended {len(rows)} rows to {RESULTS_FILE}")
-
-    # Temporary diagnostic: dump raw HTML for any HTML-mode site that got a
-    # 200 but found 0 links, so you can inspect its actual <a> tag/href
-    # structure and fix the regex/selector, rather than guessing blind.
-    # Safe to delete this block once mgeko (or any other 0-link site) is
-    # sorted out — it's not needed for the ongoing IP viability test itself.
-    debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_html")
-    for site, row in zip(SITES, rows):
-        status_code, response_length, blocked, link_count = row[3], row[5], row[6], row[7]
-        if site["mode"] == "html" and status_code == 200 and link_count == 0:
-            os.makedirs(debug_dir, exist_ok=True)
-            debug_path = os.path.join(debug_dir, f"{site['site_name']}.html")
-            result = fetch_html(site["url"])  # re-fetch just this one site for the dump
-            with open(debug_path, "w", encoding="utf-8") as f:
-                f.write(result["text"])
-            print(f"Dumped raw HTML for {site['site_name']} (0 links found) to {debug_path}")
 
 
 if __name__ == "__main__":
