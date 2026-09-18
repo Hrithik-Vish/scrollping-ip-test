@@ -23,11 +23,14 @@ Columns:
     looks_blocked   - heuristic bool: response came back but is
                        suspiciously short or contains common
                        anti-bot/challenge markers (see LOOKS_BLOCKED_MARKERS)
-    found_links     - count of <a> tags matching the chapter-link pattern,
-                       reusing the same regex as parsing.py. This is the
-                       real signal: status 200 with 0 found_links usually
-                       means you got a challenge page or a changed layout,
-                       not a working page.
+    found_links     - for HTML-mode sites: count of <a> tags matching the
+                       chapter-link pattern (same regex as parsing.py).
+                       For JSON-mode sites (mangadex): count of chapter
+                       objects in the API response's "data" list. Either
+                       way, this is the real signal: status 200 with
+                       found_links=0 usually means a challenge page, a
+                       changed layout, or a malformed/blocked API
+                       response — not a working result.
 """
 
 import csv
@@ -53,13 +56,34 @@ CSV_HEADERS = [
 ]
 
 # Sites to test, in priority order. site_name is just a label for the CSV.
+#
+# "mode" controls how the response is checked:
+#   "html" - the normal case: run the chapter-link regex over the HTML body.
+#   "json" - for sites hit via a real API instead of scraped HTML (mangadex).
+#            found_links here counts JSON chapter objects instead of <a> tags,
+#            and looks_blocked's HTML text markers don't apply.
+#
+# mgeko: switched from the homepage (which renders nothing useful for the
+# chapter-link regex) to /jumbo/manga/, which is where latest updates
+# actually live, per the Mihon/Keiyoushi source reference.
+#
+# mangadex: switched from the JS-rendered homepage shell (always near-empty
+# for a plain requests.get) to the official public API endpoint, which
+# returns structured JSON directly — no HTML parsing needed at all. This
+# matches how the real scraper already dispatches mangadex per
+# architecture-decisions.md.
 SITES = [
-    {"site_name": "asurascans", "url": "https://asurascans.com/", "priority": "core"},
-    {"site_name": "hivetoons", "url": "https://hivetoons.org/", "priority": "core"},
-    {"site_name": "kunmanga", "url": "https://www.kunmanga.online/", "priority": "core"},
-    {"site_name": "mgeko", "url": "https://www.mgeko.cc/", "priority": "secondary"},
-    {"site_name": "mangadex", "url": "https://mangadex.org/", "priority": "secondary"},
-    {"site_name": "vortexscans", "url": "https://vortexscans.org/", "priority": "secondary"},
+    {"site_name": "asurascans", "url": "https://asurascans.com/", "priority": "core", "mode": "html"},
+    {"site_name": "hivetoons", "url": "https://hivetoons.org/", "priority": "core", "mode": "html"},
+    {"site_name": "kunmanga", "url": "https://www.kunmanga.online/", "priority": "core", "mode": "html"},
+    {"site_name": "mgeko", "url": "https://www.mgeko.cc/jumbo/manga/", "priority": "secondary", "mode": "html"},
+    {
+        "site_name": "mangadex",
+        "url": "https://api.mangadex.org/chapter?includes[]=manga&order[publishAt]=desc&limit=32&offset=0",
+        "priority": "secondary",
+        "mode": "json",
+    },
+    {"site_name": "vortexscans", "url": "https://vortexscans.org/", "priority": "secondary", "mode": "html"},
 ]
 
 USER_AGENT_HEADER = {
@@ -121,9 +145,20 @@ def fetch_html(url):
         return {"status_code": "EXCEPTION", "error_detail": f"RequestException: {e}", "text": "", "response_length": 0}
 
 
-def looks_blocked(text, response_length):
+def looks_blocked(text, response_length, mode):
     if not text:
         return False  # no body to judge; status_code/EXCEPTION already tells the story
+    if mode == "json":
+        # A block/challenge page returned instead of JSON won't parse as
+        # valid JSON, or won't have a "data" list — that's the real tell
+        # for an API endpoint, not text markers built for HTML pages.
+        try:
+            import json
+
+            parsed = json.loads(text)
+            return "data" not in parsed
+        except (ValueError, TypeError):
+            return True  # got something back but it wasn't JSON at all
     lowered = text.lower()
     if any(marker in lowered for marker in LOOKS_BLOCKED_MARKERS):
         return True
@@ -132,9 +167,17 @@ def looks_blocked(text, response_length):
     return False
 
 
-def count_chapter_links(text):
+def count_chapter_links(text, mode):
     if not text:
         return 0
+    if mode == "json":
+        try:
+            import json
+
+            parsed = json.loads(text)
+            return len(parsed.get("data", []))
+        except (ValueError, TypeError, AttributeError):
+            return 0
     try:
         soup = BeautifulSoup(text, "lxml")
     except Exception:
@@ -157,8 +200,8 @@ def run():
     rows = []
     for site in SITES:
         result = fetch_html(site["url"])
-        blocked_guess = looks_blocked(result["text"], result["response_length"])
-        link_count = count_chapter_links(result["text"])
+        blocked_guess = looks_blocked(result["text"], result["response_length"], site["mode"])
+        link_count = count_chapter_links(result["text"], site["mode"])
 
         row = [
             timestamp,
