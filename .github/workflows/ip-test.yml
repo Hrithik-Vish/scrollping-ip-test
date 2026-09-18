@@ -11,7 +11,7 @@ on:
   schedule:
     # Runs at the top of every hour, UTC. GitHub's schedule times are not
     # exact under load — expect some runs a few minutes late, that's normal.
-    - cron: "0 * * * *"
+    - cron: "26 * * * *"
   workflow_dispatch: {}
 
 # Needed so the workflow can push the updated results.csv back to the repo.
