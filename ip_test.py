@@ -231,6 +231,22 @@ def run():
 
     print(f"\nAppended {len(rows)} rows to {RESULTS_FILE}")
 
+    # Temporary diagnostic: dump raw HTML for any HTML-mode site that got a
+    # 200 but found 0 links, so you can inspect its actual <a> tag/href
+    # structure and fix the regex/selector, rather than guessing blind.
+    # Safe to delete this block once mgeko (or any other 0-link site) is
+    # sorted out — it's not needed for the ongoing IP viability test itself.
+    debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_html")
+    for site, row in zip(SITES, rows):
+        status_code, response_length, blocked, link_count = row[3], row[5], row[6], row[7]
+        if site["mode"] == "html" and status_code == 200 and link_count == 0:
+            os.makedirs(debug_dir, exist_ok=True)
+            debug_path = os.path.join(debug_dir, f"{site['site_name']}.html")
+            result = fetch_html(site["url"])  # re-fetch just this one site for the dump
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(result["text"])
+            print(f"Dumped raw HTML for {site['site_name']} (0 links found) to {debug_path}")
+
 
 if __name__ == "__main__":
     run()
