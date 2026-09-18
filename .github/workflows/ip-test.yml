@@ -34,11 +34,9 @@ jobs:
         run: pip install requests beautifulsoup4 lxml
 
       - name: Run IP viability test
-        working-directory: scrollping-test
         run: python ip_test.py
 
       - name: Commit updated results.csv
-        working-directory: scrollping-test
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
